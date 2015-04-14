@@ -188,12 +188,12 @@ lookup_next_color = function (head) --- paragraph material
         local n_id = n.id
 
         if n_id == glyph_t then
-            local n_font
+            local n_font = n.font
             if  identifiers[n_font]
             and identifiers[n_font].properties
             and identifiers[n_font].properties.color
             then
-                return identifiers[n.font].properties.color
+                return identifiers[n_font].properties.color
             else
                 return -1
             end
@@ -283,15 +283,12 @@ local color_handler = function (head)
                 t = t .. str
             end
         end
-        print""
         if t ~= "" then
-            print(">>", tpr, "<<")
             if not stringfind(tpr,"/ExtGState<<.*>>") then
                 tpr = tpr.."/ExtGState<<>>"
             end
             tpr = stringgsub(tpr,"/ExtGState<<","%1"..t)
             texset("global", "pdfpageresources", tpr)
-            print(">>", tpr, "<<")
         end
         res = nil -- reset res
     end
