@@ -193,7 +193,7 @@ lookup_next_color = function (head) --- paragraph material
             and identifiers[n_font].properties
             and identifiers[n_font].properties.color
             then
-                return identifiers[n.font].properties.color
+                return identifiers[n_font].properties.color
             else
                 return -1
             end
