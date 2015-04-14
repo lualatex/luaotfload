@@ -283,7 +283,6 @@ local color_handler = function (head)
                 t = t .. str
             end
         end
-        print""
         if t ~= "" then
             if not stringfind(tpr,"/ExtGState<<.*>>") then
                 tpr = tpr.."/ExtGState<<>>"
