@@ -270,12 +270,6 @@ node_colorize = function (head, current_color)
                 head, current_color = color_whatsit(head, n, current_color, false)
             end
 
-        elseif n_id == math_t and getsubtype(n) == 0 then
-            if current_color then
-                head, current_color = color_whatsit(head, n, current_color, false)
-            end
-            n = end_of_math(n)
-
         end
 
         n = getnext(n)
