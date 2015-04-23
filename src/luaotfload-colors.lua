@@ -195,7 +195,7 @@ local disc_t            = nodetype("disc")
 local color_callback
 local color_attr        = luatexbase.new_attribute("luaotfload_color_attribute")
 
--- (node * node * string * bool * (bool | nil)) -> (node * (string | nil))
+-- (node * node * string * bool * (bool | nil)) -> (node * node * (string | nil))
 local color_whatsit
 color_whatsit = function (head, curr, color, push, tail)
     local on, off   = hex_to_rgba(color)
@@ -203,12 +203,12 @@ color_whatsit = function (head, curr, color, push, tail)
     setfield(colornode, "mode", 1)
     setfield(colornode, "data", push and on or off)
     if tail then
-        head = insert_node_after (head, curr, colornode)
+        head, curr = insert_node_after (head, curr, colornode)
     else
         head = insert_node_before(head, curr, colornode)
     end
     color = push and color or nil
-    return head, color
+    return head, curr, color
 end
 
 --[[doc--
@@ -230,7 +230,7 @@ node_colorize = function (head, groupcode, current_color)
             local n_list = getlist(n)
             n_list, current_color = node_colorize(n_list, groupcode, current_color)
             if current_color and getsubtype(n) == 1 then -- created by linebreak
-                n_list, current_color = color_whatsit(n_list, nodetail(n_list), current_color, false, true)
+                n_list, _, current_color = color_whatsit(n_list, nodetail(n_list), current_color, false, true)
             end
             setfield(n, "head", n_list)
 
@@ -243,9 +243,9 @@ node_colorize = function (head, groupcode, current_color)
             local font_color = tfmdata and tfmdata.properties  and tfmdata.properties.color
             if font_color ~= current_color then
                 if font_color then
-                    head, current_color = color_whatsit(head, n, font_color, true)
+                    head, n, current_color = color_whatsit(head, n, font_color, true)
                 else
-                    head, current_color = color_whatsit(head, n, current_color, false)
+                    head, n, current_color = color_whatsit(head, n, current_color, false)
                 end
             end
 
@@ -262,15 +262,15 @@ node_colorize = function (head, groupcode, current_color)
                     nn = getnext(nn)
                 end
                 if getid(nn) == disc_t then
-                    head, current_color = color_whatsit(head, nn, current_color, false, true)
+                    head, n, current_color = color_whatsit(head, nn, current_color, false, true)
                 else
-                    head, current_color = color_whatsit(head, n, current_color, false, true)
+                    head, n, current_color = color_whatsit(head, n, current_color, false, true)
                 end
             end
 
         elseif n_id == whatsit_t then
             if current_color then
-                head, current_color = color_whatsit(head, n, current_color, false)
+                head, n, current_color = color_whatsit(head, n, current_color, false)
             end
 
         end
@@ -280,7 +280,7 @@ node_colorize = function (head, groupcode, current_color)
 
     if groupcode == "vert_hbox" or color_callback == "pre_linebreak_filter" then
         if current_color then
-            head, current_color = color_whatsit(head, nodetail(head), current_color, false, true)
+            head, _, current_color = color_whatsit(head, nodetail(head), current_color, false, true)
         end
     end
 
