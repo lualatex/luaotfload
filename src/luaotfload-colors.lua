@@ -33,9 +33,10 @@ local getid                 = nodedirect.getid
 local getfont               = nodedirect.getfont
 local getlist               = nodedirect.getlist
 local getsubtype            = nodedirect.getsubtype
-local end_of_math           = nodedirect.end_of_math
 local getnext               = nodedirect.getnext
 local nodetail              = nodedirect.tail
+local getattribute          = nodedirect.has_attribute
+local setattribute          = nodedirect.set_attribute
 
 local texset                = tex.set
 local texget                = tex.get
@@ -189,12 +190,12 @@ local vlist_t           = nodetype("vlist")
 local whatsit_t         = nodetype("whatsit")
 -- local page_insert_t     = nodetype("page_insert")
 local sub_box_t         = nodetype("sub_box")
-local math_t            = nodetype("math")
 local disc_t            = nodetype("disc")
 
 local color_callback
+local color_attr        = luatexbase.new_attribute("luaotfload_color_attribute")
 
--- (node, node, string, bool, bool | nil) -> (node, string | nil)
+-- (node * node * string * bool * (bool | nil)) -> (node * (string | nil))
 local color_whatsit
 color_whatsit = function (head, curr, color, push, tail)
     local on, off   = hex_to_rgba(color)
@@ -216,16 +217,18 @@ always nil when the function is called, they temporarily take string
 values during the node list traversal.
 --doc]]--
 
---- (node , string | nil) -> (node, string | nil)
+--- (node * string * (string | nil)) -> (node * (string | nil))
 local node_colorize
-node_colorize = function (head, current_color)
+node_colorize = function (head, groupcode, current_color)
+    if getattribute(head, color_attr) then return head end -- avoid redundants
+
     local n = head
     while n do
         local n_id = getid(n)
 
         if n_id == hlist_t or n_id == vlist_t or n_id == sub_box_t then
             local n_list = getlist(n)
-            n_list, current_color = node_colorize(n_list, current_color)
+            n_list, current_color = node_colorize(n_list, groupcode, current_color)
             if current_color and getsubtype(n) == 1 then -- created by linebreak
                 n_list, current_color = color_whatsit(n_list, nodetail(n_list), current_color, false, true)
             end
@@ -275,17 +278,20 @@ node_colorize = function (head, current_color)
         n = getnext(n)
     end
 
-    if current_color and color_callback == "pre_linebreak_filter" then
-        head, current_color = color_whatsit(head, nodetail(head), current_color, false, true)
+    if groupcode == "vert_hbox" or color_callback == "pre_linebreak_filter" then
+        if current_color then
+            head, current_color = color_whatsit(head, nodetail(head), current_color, false, true)
+        end
     end
 
+    setattribute(head, color_attr, 1)
     return head, current_color
 end
 
---- node -> node
-local color_handler = function (head)
+--- (node * string) -> node
+local color_handler = function (head, groupcode)
     head = todirect(head)
-    head = node_colorize(head)
+    head = node_colorize(head, groupcode)
     head = tonode(head)
 
     -- now append our page resources
@@ -323,6 +329,14 @@ add_color_callback = function ( )
     if color_callback_activated == 0 then
         luatexbase.add_to_callback(color_callback,
                                    color_handler,
+                                   "luaotfload.color_handler")
+        luatexbase.add_to_callback("hpack_filter",
+                                   function (head, groupcode)
+                                       if groupcode == "adjusted_hbox" or groupcode == "align_set" then
+                                           head = color_handler(head, "vert_hbox")
+                                       end
+                                       return head
+                                   end,
                                    "luaotfload.color_handler")
         color_callback_activated = 1
     end
