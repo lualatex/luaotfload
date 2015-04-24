@@ -191,6 +191,8 @@ local whatsit_t         = nodetype("whatsit")
 -- local page_insert_t     = nodetype("page_insert")
 local sub_box_t         = nodetype("sub_box")
 local disc_t            = nodetype("disc")
+local pdfliteral_t      = node.subtype("pdf_literal")
+local colorstack_t      = node.subtype("pdf_colorstack")
 
 local color_callback
 local color_attr        = luatexbase.new_attribute("luaotfload_color_attribute")
@@ -199,13 +201,24 @@ local color_attr        = luatexbase.new_attribute("luaotfload_color_attribute")
 local color_whatsit
 color_whatsit = function (head, curr, color, push, tail)
     local on, off   = hex_to_rgba(color)
-    local colornode = newnode(whatsit_t, 8)
-    setfield(colornode, "mode", 1)
-    setfield(colornode, "data", push and on or off)
+    local colornode = newnode(whatsit_t, colorstack_t)
+    setfield(colornode, "stack", 0)
+    setfield(colornode, "command", push and 1 or 2) -- 1: push, 2: pop
+    setfield(colornode, "data", push and on or nil)
     if tail then
         head, curr = insert_node_after (head, curr, colornode)
     else
         head = insert_node_before(head, curr, colornode)
+    end
+    if not push and color:len() > 6 then
+        local colornode = newnode(whatsit_t, pdfliteral_t)
+        setfield(colornode, "mode", 2)
+        setfield(colornode, "data", "/TransGs1 gs")
+        if tail then
+            head, curr = insert_node_after (head, curr, colornode)
+        else
+            head = insert_node_before(head, curr, colornode)
+        end
     end
     color = push and color or nil
     return head, curr, color
@@ -217,22 +230,30 @@ always nil when the function is called, they temporarily take string
 values during the node list traversal.
 --doc]]--
 
---- (node * string * (string | nil)) -> (node * (string | nil))
-local node_colorize
-node_colorize = function (head, groupcode, current_color)
-    if getattribute(head, color_attr) then return head end -- avoid redundants
+local cnt = 0
 
+--- (node * (string | nil)) -> (node * (string | nil))
+local node_colorize
+node_colorize = function (head, current_color)
     local n = head
     while n do
         local n_id = getid(n)
 
         if n_id == hlist_t or n_id == vlist_t or n_id == sub_box_t then
+            cnt = cnt + 1
             local n_list = getlist(n)
-            n_list, current_color = node_colorize(n_list, groupcode, current_color)
-            if current_color and getsubtype(n) == 1 then -- created by linebreak
-                n_list, _, current_color = color_whatsit(n_list, nodetail(n_list), current_color, false, true)
+            if getattribute(n_list, color_attr) then
+                if current_color then
+                    head, n, current_color = color_whatsit(head, n, current_color, false)
+                end
+            else
+                n_list, current_color = node_colorize(n_list, current_color)
+                if current_color and getsubtype(n) == 1 then -- created by linebreak
+                    n_list, _, current_color = color_whatsit(n_list, nodetail(n_list), current_color, false, true)
+                end
+                setfield(n, "head", n_list)
             end
-            setfield(n, "head", n_list)
+            cnt = cnt - 1
 
         elseif n_id == glyph_t then
             local tfmdata = identifiers[getfont(n)]
@@ -242,10 +263,11 @@ node_colorize = function (head, groupcode, current_color)
             --- loading (see ``setcolor()`` above)
             local font_color = tfmdata and tfmdata.properties  and tfmdata.properties.color
             if font_color ~= current_color then
+                if current_color then
+                    head, n, current_color = color_whatsit(head, n, current_color, false)
+                end
                 if font_color then
                     head, n, current_color = color_whatsit(head, n, font_color, true)
-                else
-                    head, n, current_color = color_whatsit(head, n, current_color, false)
                 end
             end
 
@@ -278,7 +300,7 @@ node_colorize = function (head, groupcode, current_color)
         n = getnext(n)
     end
 
-    if groupcode == "vert_hbox" or color_callback == "pre_linebreak_filter" then
+    if cnt == 0 then
         if current_color then
             head, _, current_color = color_whatsit(head, nodetail(head), current_color, false, true)
         end
@@ -289,9 +311,9 @@ node_colorize = function (head, groupcode, current_color)
 end
 
 --- (node * string) -> node
-local color_handler = function (head, groupcode)
+local color_handler = function (head)
     head = todirect(head)
-    head = node_colorize(head, groupcode)
+    head = node_colorize(head)
     head = tonode(head)
 
     -- now append our page resources
@@ -333,7 +355,7 @@ add_color_callback = function ( )
         luatexbase.add_to_callback("hpack_filter",
                                    function (head, groupcode)
                                        if groupcode == "adjusted_hbox" or groupcode == "align_set" then
-                                           head = color_handler(head, "vert_hbox")
+                                           head = color_handler(head)
                                        end
                                        return head
                                    end,
