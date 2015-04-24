@@ -38,12 +38,7 @@ local nodetail              = nodedirect.tail
 local getattribute          = nodedirect.has_attribute
 local setattribute          = nodedirect.set_attribute
 
-local texset                = tex.set
-local texget                = tex.get
-
 local stringformat          = string.format
-local stringgsub            = string.gsub
-local stringfind            = string.find
 
 local otffeatures           = fonts.constructors.newfeatures("otf")
 local identifiers           = fonts.hashes.identifiers
@@ -200,11 +195,11 @@ local color_attr        = luatexbase.new_attribute("luaotfload_color_attribute")
 -- (node * node * string * bool * (bool | nil)) -> (node * node * (string | nil))
 local color_whatsit
 color_whatsit = function (head, curr, color, push, tail)
-    local on, off   = hex_to_rgba(color)
+    local pushdata  = hex_to_rgba(color)
     local colornode = newnode(whatsit_t, colorstack_t)
     setfield(colornode, "stack", 0)
     setfield(colornode, "command", push and 1 or 2) -- 1: push, 2: pop
-    setfield(colornode, "data", push and on or nil)
+    setfield(colornode, "data", push and pushdata or nil)
     if tail then
         head, curr = insert_node_after (head, curr, colornode)
     else
@@ -300,17 +295,18 @@ node_colorize = function (head, current_color)
         n = getnext(n)
     end
 
-    if cnt == 0 then
-        if current_color then
-            head, _, current_color = color_whatsit(head, nodetail(head), current_color, false, true)
-        end
+    if cnt == 0 and current_color then
+        head, _, current_color = color_whatsit(head, nodetail(head), current_color, false, true)
     end
 
     setattribute(head, color_attr, 1)
     return head, current_color
 end
 
---- (node * string) -> node
+local get_page_res = pdf.getpageresources or function() return pdf.pageresources end
+local set_page_res = pdf.setpageresources or function(s) pdf.pageresources = s end
+
+--- node -> node
 local color_handler = function (head)
     head = todirect(head)
     head = node_colorize(head)
@@ -319,20 +315,20 @@ local color_handler = function (head)
     -- now append our page resources
     if res then
         res["1"]  = true
-        local tpr = texget("pdfpageresources")
+        local tpr = get_page_res() or ""
         local t   = ""
         for k in pairs(res) do
-            local str = stringformat("/TransGs%s<</ca %s/CA %s>>", k, k, k)
-            if not stringfind(tpr,str) then
+            local str = stringformat("/TransGs%s<</ca %s>>", k, k) -- don't touch stroking elements
+            if not tpr:find(str) then
                 t = t .. str
             end
         end
         if t ~= "" then
-            if not stringfind(tpr,"/ExtGState<<.*>>") then
-                tpr = tpr.."/ExtGState<<>>"
+            if not tpr:find("/ExtGState<<.*>>") then
+                tpr = tpr .. "/ExtGState<<>>"
             end
-            tpr = stringgsub(tpr,"/ExtGState<<","%1"..t)
-            texset("global", "pdfpageresources", tpr)
+            tpr = tpr:gsub("/ExtGState<<", "%1"..t)
+            set_page_res(tpr) -- always global
         end
         res = nil -- reset res
     end
@@ -354,7 +350,9 @@ add_color_callback = function ( )
                                    "luaotfload.color_handler")
         luatexbase.add_to_callback("hpack_filter",
                                    function (head, groupcode)
-                                       if groupcode == "adjusted_hbox" or groupcode == "align_set" then
+                                       if  groupcode == "hbox"          or
+                                           groupcode == "adjusted_hbox" or
+                                           groupcode == "align_set"     then
                                            head = color_handler(head)
                                        end
                                        return head
