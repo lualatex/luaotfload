@@ -183,8 +183,6 @@ local glyph_t           = nodetype("glyph")
 local hlist_t           = nodetype("hlist")
 local vlist_t           = nodetype("vlist")
 local whatsit_t         = nodetype("whatsit")
--- local page_insert_t     = nodetype("page_insert")
-local sub_box_t         = nodetype("sub_box")
 local disc_t            = nodetype("disc")
 local pdfliteral_t      = node.subtype("pdf_literal")
 local colorstack_t      = node.subtype("pdf_colorstack")
@@ -234,7 +232,7 @@ node_colorize = function (head, current_color)
     while n do
         local n_id = getid(n)
 
-        if n_id == hlist_t or n_id == vlist_t or n_id == sub_box_t then
+        if n_id == hlist_t or n_id == vlist_t then
             cnt = cnt + 1
             local n_list = getlist(n)
             if getattribute(n_list, color_attr) then
