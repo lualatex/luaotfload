@@ -38,6 +38,9 @@ local nodetail              = nodedirect.tail
 local getattribute          = nodedirect.has_attribute
 local setattribute          = nodedirect.set_attribute
 
+local texset                = tex.set
+local texget                = tex.get
+
 local stringformat          = string.format
 
 local otffeatures           = fonts.constructors.newfeatures("otf")
@@ -301,9 +304,6 @@ node_colorize = function (head, current_color)
     return head, current_color
 end
 
-local get_page_res = pdf.getpageresources or function() return pdf.pageresources end
-local set_page_res = pdf.setpageresources or function(s) pdf.pageresources = s end
-
 --- node -> node
 local color_handler = function (head)
     head = todirect(head)
@@ -313,7 +313,7 @@ local color_handler = function (head)
     -- now append our page resources
     if res then
         res["1"]  = true
-        local tpr = get_page_res() or ""
+        local tpr = texget("pdfpageresources") -- respect other packages. we need a guidance
         local t   = ""
         for k in pairs(res) do
             local str = stringformat("/TransGs%s<</ca %s>>", k, k) -- don't touch stroking elements
@@ -326,7 +326,7 @@ local color_handler = function (head)
                 tpr = tpr .. "/ExtGState<<>>"
             end
             tpr = tpr:gsub("/ExtGState<<", "%1"..t)
-            set_page_res(tpr) -- always global
+            texset("global", "pdfpageresources", tpr)
         end
         res = nil -- reset res
     end
