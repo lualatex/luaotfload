@@ -1,6 +1,6 @@
 -- merged file : luatex-fonts-merged.lua
 -- parent file : luatex-fonts.lua
--- merge date  : 03/10/15 12:09:17
+-- merge date  : 04/18/15 14:41:50
 
 do -- begin closure to overcome local limits and interference
 
@@ -660,24 +660,40 @@ function lpeg.append(list,pp,delayed,checked)
   end
   return p
 end
-local function make(t,hash)
-  local p=P(false)
+local p_false=P(false)
+local p_true=P(true)
+local function make(t)
+  local function making(t)
+    local p=p_false
+    local keys=sortedkeys(t)
+    for i=1,#keys do
+      local k=keys[i]
+      if k~="" then
+        local v=t[k]
+        if v==true then
+          p=p+P(k)*p_true
+        elseif v==false then
+        else
+          p=p+P(k)*making(v)
+        end
+      end
+    end
+    if t[""] then
+      p=p+p_true
+    end
+    return p
+  end
+  local p=p_false
   local keys=sortedkeys(t)
   for i=1,#keys do
     local k=keys[i]
-    local v=t[k]
-    local h=hash[v]
-    if h then
-      if next(v) then
-        p=p+P(k)*(make(v,hash)+P(true))
+    if k~="" then
+      local v=t[k]
+      if v==true then
+        p=p+P(k)*p_true
+      elseif v==false then
       else
-        p=p+P(k)*P(true)
-      end
-    else
-      if next(v) then
-        p=p+P(k)*make(v,hash)
-      else
-        p=p+P(k)
+        p=p+P(k)*making(v)
       end
     end
   end
@@ -685,37 +701,76 @@ local function make(t,hash)
 end
 function lpeg.utfchartabletopattern(list) 
   local tree={}
-  local hash={}
   local n=#list
   if n==0 then
     for s in next,list do
       local t=tree
+      local p,pk
       for c in gmatch(s,".") do
-        local tc=t[c]
-        if not tc then
-          tc={}
-          t[c]=tc
+        if t==true then
+          t={ [c]=true,[""]=true }
+          p[pk]=t
+          p=t
+          t=false
+        elseif t==false then
+          t={ [c]=false }
+          p[pk]=t
+          p=t
+          t=false
+        else
+          local tc=t[c]
+          if not tc then
+            tc=false
+            t[c]=false
+          end
+          p=t
+          t=tc
         end
-        t=tc
+        pk=c
       end
-      hash[t]=s
+      if t==false then
+        p[pk]=true
+      elseif t==true then
+      else
+        t[""]=true
+      end
     end
   else
     for i=1,n do
-      local t=tree
       local s=list[i]
+      local t=tree
+      local p,pk
       for c in gmatch(s,".") do
-        local tc=t[c]
-        if not tc then
-          tc={}
-          t[c]=tc
+        if t==true then
+          t={ [c]=true,[""]=true }
+          p[pk]=t
+          p=t
+          t=false
+        elseif t==false then
+          t={ [c]=false }
+          p[pk]=t
+          p=t
+          t=false
+        else
+          local tc=t[c]
+          if not tc then
+            tc=false
+            t[c]=false
+          end
+          p=t
+          t=tc
         end
-        t=tc
+        pk=c
       end
-      hash[t]=s
+      if t==false then
+        p[pk]=true
+      elseif t==true then
+      else
+        t[""]=true
+      end
     end
   end
-  return make(tree,hash)
+  return make(tree)
 end
 patterns.containseol=lpeg.finder(eol)
 local function nextstep(n,step,result)
@@ -2658,6 +2713,9 @@ if not modules then modules={} end modules ['l-math']={
   license="see context related readme files"
 }
 local floor,sin,cos,tan=math.floor,math.sin,math.cos,math.tan
+if not math.ceiling then
+  math.ceiling=math.ceil
+end
 if not math.round then
   function math.round(x) return floor(x+0.5) end
 end
@@ -4336,7 +4394,8 @@ function constructors.scale(tfmdata,specification)
   local stackmath=not properties.nostackmath
   local nonames=properties.noglyphnames
   local haskerns=properties.haskerns   or properties.mode=="base" 
-  local hasligatures=properties.hasligatures or properties.mode=="base"
+  local hasligatures=properties.hasligatures or properties.mode=="base" 
+  local realdimensions=properties.realdimensions
   if changed and not next(changed) then
     changed=false
   end
@@ -4417,6 +4476,26 @@ function constructors.scale(tfmdata,specification)
     local width=description.width
     local height=description.height
     local depth=description.depth
+    if realdimensions then
+      if not height or height==0 then
+        local bb=description.boundingbox
+        local ht=bb[4]
+        if ht~=0 then
+          height=ht
+        end
+        if not depth or depth==0 then
+          local dp=-bb[2]
+          if dp~=0 then
+            depth=dp
+          end
+        end
+      elseif not depth or depth==0 then
+        local dp=-description.boundingbox[2]
+        if dp~=0 then
+          depth=dp
+        end
+      end
+    end
     if width then width=hdelta*width else width=scaledwidth end
     if height then height=vdelta*height else height=scaledheight end
     if depth and depth~=0 then
@@ -5280,6 +5359,7 @@ local report_fonts=logs.reporter("fonts","loading")
 local fonts=fonts or {}
 local mappings=fonts.mappings or {}
 fonts.mappings=mappings
+local allocate=utilities.storage.allocate
 local function loadlumtable(filename) 
   local lumname=file.replacesuffix(file.basename(filename),"lum")
   local lumfile=resolvers.findfile(lumname,"map") or ""
@@ -5381,7 +5461,7 @@ mappings.fromunicode16=fromunicode16
 local ligseparator=P("_")
 local varseparator=P(".")
 local namesplitter=Ct(C((1-ligseparator-varseparator)^1)*(ligseparator*C((1-ligseparator-varseparator)^1))^0)
-local overloads={
+local overloads=allocate {
   IJ={ name="I_J",unicode={ 0x49,0x4A },mess=0x0132 },
   ij={ name="i_j",unicode={ 0x69,0x6A },mess=0x0133 },
   ff={ name="f_f",unicode={ 0x66,0x66 },mess=0xFB00 },
@@ -7551,15 +7631,16 @@ actions["add dimensions"]=function(data,filename)
         report_otf("mark %a with width %b found in %a",d.name or "<noname>",wd,basename)
       end
       if bb then
-        local ht,dp=bb[4],-bb[2]
-        if ht==0 or ht<0 then
-        else
-          d.height=ht
-        end
-        if dp==0 or dp<0 then
-        else
-          d.depth=dp
-        end
+        local ht=bb[4]
+        local dp=-bb[2]
+          if ht==0 or ht<0 then
+          else
+            d.height=ht
+          end
+          if dp==0 or dp<0 then
+          else
+            d.depth=dp
+          end
       end
     end
   end
@@ -11198,6 +11279,7 @@ local report_chain=logs.reporter("fonts","otf chain")
 local report_process=logs.reporter("fonts","otf process")
 local report_prepare=logs.reporter("fonts","otf prepare")
 local report_warning=logs.reporter("fonts","otf warning")
+local report_run=logs.reporter("fonts","otf run")
 registertracker("otf.verbose_chain",function(v) otf.setcontextchain(v and "verbose") end)
 registertracker("otf.normal_chain",function(v) otf.setcontextchain(v and "normal") end)
 registertracker("otf.replacements","otf.singles,otf.multiples,otf.alternatives,otf.ligatures")
@@ -11220,12 +11302,18 @@ local setprop=nuts.setprop
 local getfont=nuts.getfont
 local getsubtype=nuts.getsubtype
 local getchar=nuts.getchar
+local insert_node_before=nuts.insert_before
 local insert_node_after=nuts.insert_after
 local delete_node=nuts.delete
+local remove_node=nuts.remove
 local copy_node=nuts.copy
+local copy_node_list=nuts.copy_list
 local find_node_tail=nuts.tail
 local flush_node_list=nuts.flush_list
+local free_node=nuts.free
 local end_of_math=nuts.end_of_math
+local traverse_nodes=nuts.traverse
+local traverse_id=nuts.traverse_id
 local setmetatableindex=table.setmetatableindex
 local zwnj=0x200C
 local zwj=0x200D
@@ -11243,6 +11331,8 @@ local math_code=nodecodes.math
 local dir_code=whatcodes.dir
 local localpar_code=whatcodes.localpar
 local discretionary_code=disccodes.discretionary
+local regular_code=disccodes.regular
+local automatic_code=disccodes.automatic
 local ligature_code=glyphcodes.ligature
 local privateattribute=attributes.private
 local a_state=privateattribute('state')

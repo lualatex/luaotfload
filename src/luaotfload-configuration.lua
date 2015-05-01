@@ -2,10 +2,10 @@
 -------------------------------------------------------------------------------
 --         FILE:  luaotfload-configuration.lua
 --  DESCRIPTION:  config file reader
--- REQUIREMENTS:  Luaotfload 2.5 or above
+-- REQUIREMENTS:  Luaotfload 2.6 or above
 --       AUTHOR:  Philipp Gesang (Phg), <phg42.2a@gmail.com>
 --      VERSION:  same as Luaotfload
---     MODIFIED:  2015-03-16 07:48:58+0100
+--     MODIFIED:  2015-03-29 12:46:43+0200
 -------------------------------------------------------------------------------
 --
 
@@ -142,6 +142,23 @@ local registered_loaders = {
   default    = "fontloader",
   fontloader = "fontloader",
   tl2013     = "tl2013",
+}
+
+--[[doc--
+
+  The ``post_linebreak_filter`` has been made the default callback for
+  hooking the colorizer into. This helps with the linebreaking whose
+  inserted hyphens would remain unaffected by the coloring otherwise.
+
+  http://tex.stackexchange.com/q/238539/14066
+
+--doc]]--
+
+local permissible_color_callbacks = {
+  default               = "post_linebreak_filter",
+  pre_linebreak_filter  = "pre_linebreak_filter",
+  post_linebreak_filter = "post_linebreak_filter",
+  pre_output_filter     = "pre_output_filter",
 }
 
 
@@ -479,9 +496,20 @@ local option_spec = {
     color_callback = {
       in_t      = string_t,
       out_t     = string_t,
-      transform = function (cb)
+      transform = function (cb_spec)
         --- These are the two that make sense.
-        return cb == "pre_output_filter" and cb or "pre_linebreak_filter"
+        local cb = permissible_color_callbacks[cb_spec]
+        if cb then
+          logreport ("log", 3, "conf",
+                     "Using callback \"%s\" for font colorization.",
+                     cb)
+          return cb
+        end
+        logreport ("log", 0, "conf",
+                    "Requested callback identifier \"%s\" invalid, "
+                    .. "falling back to default.",
+                    cb_spec)
+        return permissible_color_callbacks.default
       end,
     },
   },
