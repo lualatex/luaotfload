@@ -222,46 +222,43 @@ local install_loaders = function ()
     return loaders
 end
 
-luaotfload.main = function ()
+luaotfload.loaders = install_loaders ()
+local loaders    = luaotfload.loaders
+local loadmodule = loaders.luaotfload
+local initialize = loaders.initialize
 
-    luaotfload.loaders = install_loaders ()
-    local loaders    = luaotfload.loaders
-    local loadmodule = loaders.luaotfload
-    local initialize = loaders.initialize
+local starttime = osgettimeofday ()
+local init      = loadmodule "init" --- fontloader initialization
+local store     = init.early ()     --- injects the log module too
+local logreport = luaotfload.log.report
 
-    local starttime = osgettimeofday ()
-    local init      = loadmodule "init" --- fontloader initialization
-    local store     = init.early ()     --- injects the log module too
-    local logreport = luaotfload.log.report
+initialize "parsers"         --- fonts.conf and syntax
+initialize "configuration"   --- configuration options
 
-    initialize "parsers"         --- fonts.conf and syntax
-    initialize "configuration"   --- configuration options
-
-    if not init.main (store) then
-        logreport ("log", 0, "load", "Main fontloader initialization failed.")
-    end
-
-    initialize "loaders"         --- Font loading; callbacks
-    initialize "database"        --- Font management.
-    initialize "colors"          --- Per-font colors.
-
-    luaotfload.resolvers = loadmodule "resolvers" --- Font lookup
-    luaotfload.resolvers.init ()
-
-    if not config.actions.reconfigure () then
-        logreport ("log", 0, "load", "Post-configuration hooks failed.")
-    end
-
-    initialize "features"     --- font request and feature handling
-    loadmodule "letterspace"  --- extra character kerning
-    initialize "auxiliary"    --- additional high-level functionality
-
-    luaotfload.aux.start_rewrite_fontname () --- to be migrated to fontspec
-
-    logreport ("both", 0, "main",
-               "initialization completed in %0.3f seconds",
-               osgettimeofday() - starttime)
-----inspect (timing_info)
+if not init.main (store) then
+  logreport ("log", 0, "load", "Main fontloader initialization failed.")
 end
+
+initialize "loaders"         --- Font loading; callbacks
+initialize "database"        --- Font management.
+initialize "colors"          --- Per-font colors.
+
+luaotfload.resolvers = loadmodule "resolvers" --- Font lookup
+luaotfload.resolvers.init ()
+
+if not config.actions.reconfigure () then
+  logreport ("log", 0, "load", "Post-configuration hooks failed.")
+end
+
+initialize "features"     --- font request and feature handling
+loadmodule "letterspace"  --- extra character kerning
+initialize "auxiliary"    --- additional high-level functionality
+
+luaotfload.aux.start_rewrite_fontname () --- to be migrated to fontspec
+
+logreport ("both", 0, "main",
+			"initialization completed in %0.3f seconds",
+			osgettimeofday() - starttime)
+----inspect (timing_info)
 
 -- vim:tw=79:sw=4:ts=4:et
